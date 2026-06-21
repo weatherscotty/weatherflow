@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>West Coast Yacht Club Navigator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root {
+  --navy:#0a1628;--deep:#0d1f3c;--steel:#1a3557;--chart:#f0ede6;--chart2:#e8e4da;
+  --muted:#6b7a99;--red-mark:#c0392b;--green-mark:#1a7a4a;--yellow-mark:#d4a017;
+  --blue-mark:#1a6fa8;--accent:#4a9eff;--white:#ffffff;
+  --panel-bg:rgba(10,22,40,0.97);--border:rgba(74,158,255,0.18);--radius:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--navy);color:var(--white);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+#topbar{background:var(--deep);border-bottom:1px solid var(--border);padding:0 16px;height:52px;display:flex;align-items:center;gap:14px;flex-shrink:0;z-index:1000}
+#topbar h1{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+#topbar h1 span{color:var(--accent)}
+.topbar-divider{width:1px;height:28px;background:var(--border)}
+.legend{display:flex;gap:10px;align-items:center}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:500}
+.legend-svg{width:14px;height:14px;flex-shrink:0}
+.topbar-spacer{flex:1}
+#sync-status{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;white-space:nowrap}
+#sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s}
+#sync-dot.ok{background:#00e676}
+#sync-dot.err{background:#ff5252}
+#sync-dot.busy{background:var(--yellow-mark)}
+#btn-add-club{background:var(--accent);color:var(--navy);border:none;border-radius:var(--radius);padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;transition:opacity .15s}
+#btn-add-club:hover{opacity:.85}
+#main{display:flex;flex:1;overflow:hidden}
+#map{flex:1;z-index:1}
+#side-panel{width:380px;background:var(--panel-bg);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#panel-inner{flex:1;overflow-y:auto;padding:20px}
+#panel-inner::-webkit-scrollbar{width:4px}
+#panel-inner::-webkit-scrollbar-track{background:transparent}
+#panel-inner::-webkit-scrollbar-thumb{background:var(--steel);border-radius:2px}
+#panel-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--muted);text-align:center;padding:32px}
+#panel-placeholder .anchor-icon{font-size:36px;opacity:.3}
+#panel-placeholder p{font-size:13px;line-height:1.6}
+.club-header{margin-bottom:20px}
+.club-abbrev{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+.club-name-display{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;line-height:1.2;color:var(--white);margin-bottom:6px}
+.type-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+.type-badge.sail{background:rgba(26,111,168,.3);color:#7ec8f5;border:1px solid rgba(26,111,168,.4)}
+.type-badge.power{background:rgba(212,160,23,.25);color:#f5cc6e;border:1px solid rgba(212,160,23,.35)}
+.type-badge.both{background:rgba(26,122,74,.3);color:#6dd99a;border:1px solid rgba(26,122,74,.4)}
+.type-badge.racing{background:rgba(192,57,43,.3);color:#f5967e;border:1px solid rgba(192,57,43,.4)}
+.info-grid{display:grid;gap:10px;margin:16px 0}
+.info-row{display:flex;gap:10px}
+.info-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);min-width:80px;padding-top:1px}
+.info-value{font-size:13px;color:var(--chart);flex:1}
+.info-value a{color:var(--accent);text-decoration:none}
+.info-value a:hover{text-decoration:underline}
+.section-divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+.section-title{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.section-title button{font-size:11px;font-weight:600;color:var(--accent);background:none;border:1px solid var(--border);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s}
+.section-title button:hover{background:rgba(74,158,255,.12)}
+.edit-form{display:none;margin-bottom:16px}
+.edit-form.open{display:block}
+.form-row{margin-bottom:10px}
+.form-row label{display:block;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.form-row input,.form-row select,.form-row textarea{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:5px;color:var(--white);font-family:'Inter',sans-serif;font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s}
+.form-row input:focus,.form-row select:focus,.form-row textarea:focus{border-color:var(--accent)}
+.form-row textarea{resize:vertical;min-height:60px}
+.form-row select option{background:var(--deep)}
+.form-actions{display:flex;gap:8px;margin-top:12px}
+.btn-save{flex:1;background:var(--accent);color:var(--navy);border:none;border-radius:5px;padding:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s}
+.btn-save:hover{opacity:.85}
+.btn-save:disabled{opacity:.4;cursor:not-allowed}
+.btn-cancel{padding:8px 14px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s}
+.btn-cancel:hover{background:rgba(255,255,255,.05)}
+.race-empty{font-size:12px;color:var(--muted);font-style:italic;padding:8px 0}
+.race-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.race-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.race-name{font-size:14px;font-weight:600;color:var(--white)}
+.race-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.race-card-actions{display:flex;gap:6px}
+.race-btn-edit,.race-btn-del{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:3px;transition:background .15s}
+.race-btn-edit:hover{background:rgba(74,158,255,.15)}
+.race-btn-del:hover{background:rgba(192,57,43,.2)}
+.race-nodes{margin-top:8px}
+.race-node-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.race-node-item:last-child{border-bottom:none}
+.node-num{width:18px;height:18px;border-radius:50%;background:var(--steel);color:var(--accent);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.node-coords{color:#aac;font-family:monospace;font-size:10px}
+.race-add-form{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;display:none}
+.race-add-form.open{display:block}
+.nodes-list{margin:10px 0;display:flex;flex-direction:column;gap:8px}
+.node-row{display:flex;gap:6px;align-items:center}
+.node-row span{font-size:11px;color:var(--muted);min-width:18px;text-align:right}
+.node-row input{flex:1}
+.btn-add-node{background:none;border:1px dashed var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:6px;cursor:pointer;width:100%;text-align:center;transition:border-color .15s,color .15s}
+.btn-add-node:hover{border-color:var(--accent);color:var(--accent)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--deep);border:1px solid var(--border);border-radius:12px;width:480px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:28px}
+.modal h2{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;margin-bottom:20px}
+.modal-actions{display:flex;gap:8px;margin-top:20px}
+#filters{display:flex;gap:6px;align-items:center}
+.filter-chip{font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;letter-spacing:.02em}
+.filter-chip.active{color:var(--navy);border-color:transparent}
+.filter-chip[data-type="all"].active{background:var(--muted);color:var(--navy)}
+.filter-chip[data-type="Sail + Power"].active{background:var(--green-mark)}
+.filter-chip[data-type="Sail"].active{background:var(--blue-mark);color:#fff}
+.filter-chip[data-type="Power"].active{background:var(--yellow-mark)}
+.filter-chip[data-type="Sail Racing"].active{background:var(--red-mark);color:#fff}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--steel);color:var(--white);padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;z-index:3000;opacity:0;transition:opacity .2s;border:1px solid var(--accent);pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+#loading-screen{position:fixed;inset:0;background:var(--navy);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s}
+#loading-screen.hidden{opacity:0;pointer-events:none}
+.loading-spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-family:'Barlow Condensed',sans-serif;font-size:16px;color:var(--muted);letter-spacing:.08em}
+.coords-line{font-size:11px;color:var(--muted);font-family:monospace}
+.leaflet-container{background:#0a1a30}
+.leaflet-control-zoom{border:1px solid var(--border)!important}
+.leaflet-control-zoom a{background:var(--deep)!important;color:var(--accent)!important;border-color:var(--border)!important}
+.leaflet-control-zoom a:hover{background:var(--steel)!important}
+.race-map-btn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:11px;font-weight:600;color:var(--accent);background:none;border:1px solid var(--border);border-radius:5px;padding:4px 10px;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s}
+.race-map-btn:hover{background:rgba(74,158,255,.12)}
+.race-map-btn.active{background:rgba(74,158,255,.2);border-color:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">CONNECTING TO DATABASE…</div>
+</div>
+
+<div id="topbar">
+  <h1>⚓ <span>West Coast</span> Yacht Club Navigator</h1>
+  <div class="topbar-divider"></div>
+  <div id="filters">
+    <button class="filter-chip active" data-type="all">All</button>
+    <button class="filter-chip" data-type="Sail + Power">Sail + Power</button>
+    <button class="filter-chip" data-type="Sail">Sail</button>
+    <button class="filter-chip" data-type="Power">Power</button>
+    <button class="filter-chip" data-type="Sail Racing">Racing</button>
+  </div>
+  <div class="topbar-divider"></div>
+  <div class="legend">
+    <div class="legend-item"><svg class="legend-svg" viewBox="0 0 14 14"><polygon points="7,1 13,13 1,13" fill="#1a7a4a" stroke="#fff" stroke-width="1"/></svg>Sail + Power</div>
+    <div class="legend-item"><svg class="legend-svg" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#1a6fa8" stroke="#fff" stroke-width="1"/></svg>Sail</div>
+    <div class="legend-item"><svg class="legend-svg" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" rx="2" fill="#d4a017" stroke="#fff" stroke-width="1"/></svg>Power</div>
+    <div class="legend-item"><svg class="legend-svg" viewBox="0 0 14 14"><polygon points="7,1 13,7 7,13 1,7" fill="#c0392b" stroke="#fff" stroke-width="1"/></svg>Racing</div>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div id="sync-status"><div id="sync-dot"></div><span id="sync-label">Connecting…</span></div>
+  <div class="topbar-divider"></div>
+  <button id="btn-add-club">+ Add Club</button>
+</div>
+
+<div id="main">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div id="panel-inner">
+      <div id="panel-placeholder">
+        <div class="anchor-icon">⚓</div>
+        <p>Click any marker on the map to view club details, manage race courses, and edit information.</p>
+      </div>
+      <div id="club-detail" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Club Modal -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <h2>Add Yacht Club</h2>
+    <div class="form-row"><label>Club Name *</label><input id="ac-name" type="text" placeholder="e.g. Puget Sound Sailing Club"></div>
+    <div class="form-row"><label>Abbreviation</label><input id="ac-abbrev" type="text"></div>
+    <div class="form-row"><label>State *</label>
+      <select id="ac-state">
+        <option value="">Select state…</option>
+        <option value="Washington">Washington</option>
+        <option value="Oregon">Oregon</option>
+        <option value="California">California</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="form-row"><label>City / Area</label><input id="ac-city" type="text"></div>
+    <div class="form-row"><label>Water Body</label><input id="ac-water" type="text"></div>
+    <div class="form-row"><label>Club Type</label>
+      <select id="ac-type">
+        <option value="Sail + Power">Sail + Power</option>
+        <option value="Sail">Sail</option>
+        <option value="Power">Power</option>
+        <option value="Sail Racing">Sail Racing</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Association(s)</label><input id="ac-assoc" type="text"></div>
+    <div class="form-row"><label>Website</label><input id="ac-website" type="text"></div>
+    <div class="form-row"><label>Address</label><input id="ac-address" type="text"></div>
+    <div class="form-row"><label>Latitude *</label><input id="ac-lat" type="number" step="0.0001" placeholder="e.g. 47.6452"></div>
+    <div class="form-row"><label>Longitude *</label><input id="ac-lng" type="number" step="0.0001" placeholder="e.g. -122.3086"></div>
+    <div class="modal-actions">
+      <button class="btn-save" id="btn-ac-save">Add Club</button>
+      <button class="btn-cancel" id="btn-ac-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── SUPABASE ─────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://mvobsmjovkdusfppodyv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2oZLA9wo-l_c65es_3ksaQ_pqC_TkLQ';
+// UMD build exposes window.supabase = { createClient, ... }
+const _sbLib = (typeof supabase !== 'undefined') ? supabase : (window.Supabase || null);
+if (!_sbLib || typeof _sbLib.createClient !== 'function') {
+  document.getElementById('loading-screen').innerHTML =
+    '<div style="color:#ff5252;font-family:monospace;font-size:14px;padding:40px;text-align:center;line-height:2">&#10060; Supabase library failed to load.<br><button onclick="location.reload()" style="margin-top:12px;padding:8px 20px;background:#4a9eff;color:#0a1628;border:none;border-radius:6px;cursor:pointer">Reload</button></div>';
+  throw new Error('Supabase createClient not available');
+}
+const sb = _sbLib.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── SEED DATA ────────────────────────────────────────────────────
+const SEED = [
+  {id:"club_0",state:"Washington",name:"Seattle Yacht Club",abbrev:"SYC",city:"Seattle",water:"Lake Union / Portage Bay",association:"ICOYC",type:"Sail + Power",website:"seattleyachtclub.org",lat:47.645293,lng:-122.3085992,address:"1807 E Hamlin St, Seattle, WA 98112"},
+  {id:"club_1",state:"Washington",name:"Corinthian Yacht Club of Seattle",abbrev:"CYC Seattle",city:"Seattle",water:"Shilshole Bay",association:"PNW",type:"Sail + Power",website:"cycseattle.org",lat:47.6855036,lng:-122.4036744,address:"7755 Seaview Ave NW Pier V, Seattle, WA 98117"},
+  {id:"club_2",state:"Washington",name:"Sloop Tavern Yacht Club",abbrev:"STYC",city:"Seattle",water:"Lake Union",association:"PNW",type:"Sail Racing",website:"styc.org",lat:47.6688714,lng:-122.3943177,address:"2830 NW Market St, Seattle, WA 98107"},
+  {id:"club_3",state:"Washington",name:"Puget Sound Yacht Club",abbrev:"PSYC",city:"Seattle",water:"Lake Union",association:"PNW",type:"Sail + Power",website:"pugetsoundyc.org",lat:47.6500287,lng:-122.3308209,address:"2321 N Northlake Way, Seattle, WA 98103"},
+  {id:"club_4",state:"Washington",name:"Queen City Yacht Club",abbrev:"QCYC",city:"Seattle",water:"Portage Bay",association:"PNW",type:"Sail + Power",website:"queencityyachtclub.com",lat:47.6434973,lng:-122.3163736,address:"2608 Boyer Ave E, Seattle, WA 98102"},
+  {id:"club_5",state:"Washington",name:"Tacoma Yacht Club",abbrev:"TYC",city:"Tacoma",water:"Commencement Bay",association:"PNW",type:"Sail + Power",website:"tacomayachtclub.org",lat:47.3068422,lng:-122.5123442,address:"5401 Yacht Club Rd, Tacoma, WA 98407"},
+  {id:"club_6",state:"Washington",name:"Corinthian Yacht Club of Tacoma",abbrev:"CYC Tacoma",city:"Tacoma",water:"Commencement Bay",association:"PNW",type:"Sail + Power",website:"",lat:47.2968559,lng:-122.4239654,address:"5624 Marine View Dr, Tacoma, WA 98422"},
+  {id:"club_7",state:"Washington",name:"Gig Harbor Yacht Club",abbrev:"GHYC",city:"Gig Harbor",water:"Puget Sound",association:"PNW",type:"Sail + Power",website:"gigharboryc.com",lat:47.332911,lng:-122.5890304,address:"8209 Stinson Ave, Gig Harbor, WA 98332"},
+  {id:"club_8",state:"Washington",name:"Quartermaster Yacht Club",abbrev:"QYC",city:"Vashon Island",water:"Quartermaster Harbor",association:"PNW",type:"Sail + Power",website:"",lat:47.3938659,lng:-122.4660886,address:"23428 Vashon Hwy SW, Vashon, WA 98070"},
+  {id:"club_9",state:"Washington",name:"Olympia Yacht Club",abbrev:"OYC",city:"Olympia",water:"Budd Inlet / South Puget Sound",association:"PNW",type:"Sail + Power",website:"olympiayachtclub.org",lat:47.045367,lng:-122.9068639,address:"201 Simmons St NW, Olympia, WA 98501"},
+  {id:"club_10",state:"Washington",name:"Des Moines Yacht Club",abbrev:"DMYC",city:"Des Moines",water:"Puget Sound",association:"PNW",type:"Sail + Power",website:"desmoinesyc.org",lat:47.3968667,lng:-122.3278153,address:"22737 Marine View Dr S, Des Moines, WA 98198"},
+  {id:"club_11",state:"Washington",name:"Port Orchard Yacht Club",abbrev:"POYC",city:"Port Orchard",water:"Puget Sound",association:"PNW",type:"Sail + Power",website:"",lat:47.5383067,lng:-122.645399,address:"201 Bay St, Port Orchard, WA 98366"},
+  {id:"club_12",state:"Washington",name:"Port Madison Yacht Club",abbrev:"PMYC",city:"Bainbridge Island",water:"Port Madison",association:"PNW",type:"Sail + Power",website:"",lat:47.6937262,lng:-122.5355839,address:"8478 NE Hidden Cove Rd, Bainbridge Island, WA 98110"},
+  {id:"club_13",state:"Washington",name:"Port Townsend Yacht Club",abbrev:"PTYC",city:"Port Townsend",water:"Admiralty Inlet",association:"PNW",type:"Sail + Power",website:"",lat:48.1082618,lng:-122.77306,address:"2503 Washington St, Port Townsend, WA 98368"},
+  {id:"club_14",state:"Washington",name:"Port Angeles Yacht Club",abbrev:"PAYC",city:"Port Angeles",water:"Strait of Juan de Fuca",association:"PNW",type:"Sail + Power",website:"",lat:48.1277386,lng:-123.4565995,address:"1305 Marine Dr, Port Angeles, WA 98363"},
+  {id:"club_15",state:"Washington",name:"Bellingham Yacht Club",abbrev:"BYC-WA",city:"Bellingham",water:"Bellingham Bay",association:"PNW",type:"Sail + Power",website:"bellyc.org",lat:48.7576025,lng:-122.5049862,address:"2625 S Harbor Loop Dr, Bellingham, WA 98225"},
+  {id:"club_16",state:"Washington",name:"Oak Harbor Yacht Club",abbrev:"OHYC",city:"Oak Harbor",water:"NW Puget Sound",association:"PNW",type:"Sail + Power",website:"",lat:48.2878503,lng:-122.6324955,address:"1301 SE Catalina Dr, Oak Harbor, WA 98277"},
+  {id:"club_17",state:"Washington",name:"Fidalgo Yacht Club",abbrev:"FYC-WA",city:"Anacortes",water:"Fidalgo Bay",association:"PNW",type:"Sail + Power",website:"",lat:48.4949982,lng:-122.686786,address:"6046 Sands Way, Anacortes, WA 98221"},
+  {id:"club_18",state:"Washington",name:"Orcas Island Yacht Club",abbrev:"OIYC",city:"Orcas Island",water:"San Juan Islands",association:"PNW",type:"Sail + Power",website:"",lat:48.6323348,lng:-122.9597874,address:"876 Deer Harbor Rd, Eastsound, WA 98245"},
+  {id:"club_19",state:"Washington",name:"San Juan Island Yacht Club",abbrev:"SJIYC",city:"Friday Harbor",water:"San Juan Island",association:"PNW",type:"Sail + Power",website:"",lat:48.5368583,lng:-123.0177476,address:"273 Front St, Friday Harbor, WA 98250"},
+  {id:"club_20",state:"Oregon",name:"Portland Yacht Club",abbrev:"PYC",city:"Portland",water:"Columbia River",association:"CRYA",type:"Sail + Power",website:"portlandyacht.com",lat:45.6008333,lng:-122.6519444,address:"1241 NE Marine Dr, Portland, OR 97211"},
+  {id:"club_21",state:"Oregon",name:"Rose City Yacht Club",abbrev:"RCYC",city:"Portland",water:"Columbia River",association:"CRYA",type:"Sail + Power",website:"rosecityyachtclub.org",lat:45.6013565,lng:-122.6264038,address:"3737 NE Marine Dr, Portland, OR 97211"},
+  {id:"club_22",state:"Oregon",name:"Columbia River Yacht Club",abbrev:"CRYC",city:"Portland",water:"Columbia River",association:"CRYA",type:"Sail + Power",website:"",lat:45.6081256,lng:-122.6651941,address:"37 NE Tomahawk Island Dr, Portland, OR 97217"},
+  {id:"club_23",state:"Oregon",name:"Tyee Yacht Club",abbrev:"TYC-OR",city:"Portland",water:"Columbia River",association:"CRYA",type:"Power",website:"",lat:45.6011314,lng:-122.632812,address:"2929 NE Marine Dr, Portland, OR 97211"},
+  {id:"club_24",state:"Oregon",name:"Multnomah Channel Yacht Club",abbrev:"MCYC",city:"Scappoose",water:"Multnomah Channel",association:"CRYA",type:"Sail + Power",website:"mcyc1.org",lat:45.7355308,lng:-122.8509292,address:"50990 Dike Rd, Scappoose, OR 97056"},
+  {id:"club_25",state:"Oregon",name:"Willamette Sailing Club",abbrev:"WSC",city:"Portland",water:"Willamette River",association:"Independent",type:"Sail",website:"willamettesailing.org",lat:45.4784702,lng:-122.6710056,address:"6336 S Beaver Ave, Portland, OR 97239"},
+  {id:"club_26",state:"Oregon",name:"Eugene Yacht Club",abbrev:"EYC-OR",city:"Junction City",water:"Fern Ridge Lake",association:"Independent",type:"Sail",website:"eugeneyachtclub.org",lat:44.1158874,lng:-123.3130675,address:"26126 Bangs Rd, Junction City, OR 97448"},
+  {id:"club_27",state:"Oregon",name:"Astoria Yacht Club",abbrev:"AYC-OR",city:"Astoria",water:"Columbia River mouth",association:"CRYA",type:"Sail + Power",website:"",lat:46.18968,lng:-123.857089,address:"10 Pier 1, Astoria, OR 97103"},
+  {id:"club_28",state:"Oregon",name:"Yaquina Bay Yacht Club",abbrev:"YBYC",city:"Newport",water:"Yaquina Bay",association:"Independent",type:"Sail + Power",website:"",lat:44.6310933,lng:-124.042113,address:"750 SE Bay Blvd., Newport, OR 97365"},
+  {id:"club_29",state:"Oregon",name:"Dolphin Yacht Club",abbrev:"DYC",city:"Washougal, WA",water:"Columbia River",association:"CRYA",type:"Sail + Power",website:"",lat:45.5785833,lng:-122.3801997,address:"34 S A St, Washougal, WA 98671"},
+  {id:"club_30",state:"California",name:"San Francisco Yacht Club",abbrev:"SFYC",city:"Belvedere",water:"San Francisco Bay",association:"YRA / PICYA / ICOYC",type:"Sail + Power",website:"sfyc.org",lat:37.8725514,lng:-122.4631608,address:"98 Beach Rd, Belvedere Tiburon, CA 94920"},
+  {id:"club_31",state:"California",name:"St. Francis Yacht Club",abbrev:"StFYC",city:"San Francisco",water:"San Francisco Bay",association:"YRA / PICYA / ICOYC",type:"Sail + Power",website:"stfyc.com",lat:37.8073127,lng:-122.4467847,address:"99 Yacht Rd, San Francisco, CA 94123"},
+  {id:"club_32",state:"California",name:"Golden Gate Yacht Club",abbrev:"GGYC",city:"San Francisco",water:"San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"ggyc.org",lat:37.8077556,lng:-122.4426891,address:"1 Yacht Rd, San Francisco, CA 94123"},
+  {id:"club_33",state:"California",name:"Corinthian Yacht Club",abbrev:"CYC-Tib",city:"Tiburon",water:"San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"cyc.org",lat:37.8716659,lng:-122.457026,address:"43 Main St, Tiburon, CA 94920"},
+  {id:"club_34",state:"California",name:"Encinal Yacht Club",abbrev:"EYC-SF",city:"Alameda",water:"San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"encinalyc.com",lat:37.782401,lng:-122.262924,address:"1251 Pacific Marina, Alameda, CA 94501"},
+  {id:"club_35",state:"California",name:"Berkeley Yacht Club",abbrev:"BYC-CA",city:"Berkeley",water:"San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"berkeleyyc.org",lat:37.8661949,lng:-122.3176407,address:"1 Seawall Dr, Berkeley, CA 94710"},
+  {id:"club_36",state:"California",name:"Richmond Yacht Club",abbrev:"RYC-CA",city:"Point Richmond",water:"San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"richmondyachtclub.org",lat:37.9099307,lng:-122.3834662,address:"351 Brickyard Cove Rd, Point Richmond, CA 94801"},
+  {id:"club_37",state:"California",name:"Marin Yacht Club",abbrev:"MYC-CA",city:"San Rafael",water:"San Pablo Bay",association:"YRA / PICYA",type:"Sail + Power",website:"marinyc.org",lat:37.9706116,lng:-122.4990261,address:"24 Summit Ave, San Rafael, CA 94901"},
+  {id:"club_38",state:"California",name:"Oakland Yacht Club",abbrev:"OYC-CA",city:"Alameda",water:"Oakland Estuary",association:"YRA / PICYA",type:"Sail + Power",website:"oaklandyachtclub.org",lat:37.7834503,lng:-122.2647474,address:"1101 Pacific Marina, Alameda, CA 94501"},
+  {id:"club_39",state:"California",name:"Sequoia Yacht Club",abbrev:"SeqYC",city:"Redwood City",water:"South San Francisco Bay",association:"YRA / PICYA",type:"Sail + Power",website:"sequoiayc.org",lat:37.5029357,lng:-122.2123326,address:"441 Seaport Ct, Redwood City, CA 94063"},
+  {id:"club_40",state:"California",name:"Vallejo Yacht Club",abbrev:"VYC",city:"Vallejo",water:"San Pablo Bay",association:"YRA / PICYA",type:"Sail + Power",website:"",lat:38.1051114,lng:-122.2666267,address:"485 Mare Island Way, Vallejo, CA 94590"},
+  {id:"club_41",state:"California",name:"South Lake Tahoe Windjammers YC",abbrev:"SLTWYC",city:"South Lake Tahoe",water:"Lake Tahoe",association:"PICYA",type:"Sail",website:"sltwyc.com",lat:38.9311341,lng:-120.004617,address:"589 Tahoe Keys Blvd, South Lake Tahoe, CA 96150"},
+  {id:"club_42",state:"California",name:"Santa Cruz Yacht Club",abbrev:"SCYC",city:"Santa Cruz",water:"Monterey Bay",association:"NOSA / PICYA",type:"Sail + Power",website:"santacruzyachtclub.com",lat:36.9663088,lng:-122.0047512,address:"244 4th Ave, Santa Cruz, CA 95062"},
+  {id:"club_43",state:"California",name:"Monterey Peninsula Yacht Club",abbrev:"MPYC",city:"Monterey",water:"Monterey Bay",association:"NOSA",type:"Sail + Power",website:"mpyc.net",lat:36.6020501,lng:-121.889824,address:"Wharf II, Monterey, CA 93940"},
+  {id:"club_44",state:"California",name:"Morro Bay Yacht Club",abbrev:"MorBYC",city:"Morro Bay",water:"Morro Bay",association:"SCYA / NOSA",type:"Sail + Power",website:"",lat:35.3629468,lng:-120.852469,address:"541 Embarcadero, Morro Bay, CA 93442"},
+  {id:"club_45",state:"California",name:"Santa Barbara Yacht Club",abbrev:"SBYC",city:"Santa Barbara",water:"Santa Barbara Channel",association:"ASBCYC / SCYA",type:"Sail + Power",website:"sbyc.com",lat:34.4032778,lng:-119.6928472,address:"130 Harbor Way, Santa Barbara, CA 93109"},
+  {id:"club_46",state:"California",name:"Channel Islands Yacht Club",abbrev:"ChIYC",city:"Oxnard",water:"Channel Islands Harbor",association:"ASBCYC / SCYA",type:"Sail + Power",website:"",lat:34.1636733,lng:-119.2265883,address:"4100 Harbor Blvd, Oxnard, CA 93035"},
+  {id:"club_47",state:"California",name:"California Yacht Club",abbrev:"CYC",city:"Marina del Rey",water:"Marina del Rey",association:"SCYA / ASMBYC",type:"Sail + Power",website:"calyachtclub.com",lat:33.9821969,lng:-118.446154,address:"4469 Admiralty Way, Marina Del Rey, CA 90292"},
+  {id:"club_48",state:"California",name:"Del Rey Yacht Club",abbrev:"DRYC",city:"Marina del Rey",water:"Marina del Rey",association:"SCYA / ASMBYC",type:"Sail + Power",website:"",lat:33.9816757,lng:-118.4500277,address:"13900 Palawan Way, Marina Del Rey, CA 90292"},
+  {id:"club_49",state:"California",name:"Los Angeles Yacht Club",abbrev:"LAYC",city:"San Pedro",water:"LA Harbor",association:"SCYA / ASMBYC",type:"Sail + Power",website:"",lat:33.71808,lng:-118.281528,address:"285 Whalers Walk, San Pedro, CA 90731"},
+  {id:"club_50",state:"California",name:"Cabrillo Beach Yacht Club",abbrev:"CBYC",city:"San Pedro",water:"LA Harbor",association:"SCYA / ASMBYC",type:"Sail + Power",website:"",lat:33.7247221,lng:-118.2823535,address:"211 W 22nd St, San Pedro, CA 90731"},
+  {id:"club_51",state:"California",name:"King Harbor Yacht Club",abbrev:"KHYC",city:"Redondo Beach",water:"King Harbor",association:"SCYA / ASMBYC",type:"Sail + Power",website:"khyc.org",lat:33.8490745,lng:-118.4008325,address:"280 Yacht Club Way, Redondo Beach, CA 90277"},
+  {id:"club_52",state:"California",name:"Newport Harbor Yacht Club",abbrev:"NHYC",city:"Newport Beach",water:"Newport Harbor",association:"SCYA / AOCYC / ICOYC",type:"Sail + Power",website:"nhyc.org",lat:33.6053653,lng:-117.9096753,address:"720 W Bay Ave, Newport Beach, CA 92661"},
+  {id:"club_53",state:"California",name:"Balboa Yacht Club",abbrev:"BYC",city:"Newport Beach",water:"Newport Harbor",association:"SCYA / AOCYC",type:"Sail + Power",website:"balboayachtclub.org",lat:33.6042092,lng:-117.8841151,address:"1801 Bayside Dr, Corona Del Mar, CA 92625"},
+  {id:"club_54",state:"California",name:"Lido Isle Yacht Club",abbrev:"LIYC",city:"Newport Beach",water:"Newport Harbor",association:"SCYA / AOCYC",type:"Sail + Power",website:"",lat:33.6100589,lng:-117.9146652,address:"701 Via Lido Soud, Newport Beach, CA 92663"},
+  {id:"club_55",state:"California",name:"Huntington Harbour Yacht Club",abbrev:"HHYC",city:"Huntington Beach",water:"Huntington Harbour",association:"SCYA / ASMBYC",type:"Sail + Power",website:"",lat:33.7123623,lng:-118.061532,address:"3821 Warner Ave, Huntington Beach, CA 92649"},
+  {id:"club_56",state:"California",name:"Dana Point Yacht Club",abbrev:"DPYC",city:"Dana Point",water:"Dana Point Harbor",association:"SCYA / ASPBYC",type:"Sail + Power",website:"",lat:33.4606543,lng:-117.7043551,address:"24399 Dana Dr, Dana Point, CA 92629"},
+  {id:"club_57",state:"California",name:"Long Beach Yacht Club",abbrev:"LBYC",city:"Long Beach",water:"San Pedro Bay",association:"SCYA / ASMBYC / ICOYC",type:"Sail + Power",website:"lbyc.org",lat:33.7529455,lng:-118.1139766,address:"6201 Appian Way, Long Beach, CA 90803"},
+  {id:"club_58",state:"California",name:"Alamitos Bay Yacht Club",abbrev:"ABYC",city:"Long Beach",water:"Alamitos Bay",association:"SCYA / ASMBYC",type:"Sail + Power",website:"abyc.org",lat:33.7459488,lng:-118.116781,address:"7201 E Ocean Blvd, Long Beach, CA 90803"},
+  {id:"club_59",state:"California",name:"Harbour Island Yacht Club",abbrev:"HIYC",city:"San Diego",water:"San Diego Bay",association:"SCYA / SDAYC",type:"Sail + Power",website:"",lat:32.7256953,lng:-117.2055231,address:"1880 Harbor Island Dr, San Diego, CA 92101"},
+  {id:"club_60",state:"California",name:"Mission Bay Yacht Club",abbrev:"MBYC",city:"San Diego",water:"Mission Bay",association:"SCYA / SDAYC",type:"Sail + Power",website:"mbyc.org",lat:32.7789956,lng:-117.2474618,address:"1215 El Carmel Pl, San Diego, CA 92109"},
+  {id:"club_61",state:"California",name:"San Diego Yacht Club",abbrev:"SDYC",city:"San Diego",water:"San Diego Bay",association:"SCYA / SDAYC",type:"Sail + Power",website:"sdyc.org",lat:32.7189953,lng:-117.2296726,address:"1011 Anchorage Ln, San Diego, CA 92106"},
+  {id:"club_62",state:"California",name:"Coronado Yacht Club",abbrev:"CorYC",city:"Coronado",water:"San Diego Bay",association:"SCYA / SDAYC",type:"Sail + Power",website:"",lat:32.6818672,lng:-117.1745196,address:"1631 Strand Way, Coronado, CA 92118"}
+];
+
+// ── STATE ────────────────────────────────────────────────────────
+let clubs = [];
+let races = {};
+let activeFilter = 'all';
+let selectedClubId = null;
+let mapMarkers = {};
+let raceOverlays = {};
+let activeRaceId = null;
+let leafletMap;
+
+// ── SYNC STATUS ──────────────────────────────────────────────────
+function setSyncStatus(state, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  dot.className = '';
+  dot.classList.add(state); // ok | err | busy
+  lbl.textContent = label;
+}
+
+// ── SEED DB IF EMPTY ─────────────────────────────────────────────
+async function seedIfEmpty() {
+  const { count, error: ce2 } = await sb.from('clubs').select('*', {count:'exact', head:true});
+  if (!ce2 && count === 0) {
+    setSyncStatus('busy', 'Seeding…');
+    // Insert in batches of 20
+    for (let i = 0; i < SEED.length; i += 20) {
+      const batch = SEED.slice(i, i+20);
+      const { error } = await sb.from('clubs').insert(batch);
+      if (error) { console.error('Seed error', error); }
+    }
+  }
+}
+
+// ── LOAD DATA ────────────────────────────────────────────────────
+async function loadAll() {
+  setSyncStatus('busy', 'Loading…');
+  try {
+    await seedIfEmpty();
+    const [{ data: clubData, error: ce }, { data: raceData, error: re }] = await Promise.all([
+      sb.from('clubs').select('*').order('state').order('name'),
+      sb.from('races').select('*').order('created_at')
+    ]);
+    if (ce) throw ce;
+    if (re) throw re;
+    clubs = clubData || [];
+    races = {};
+    (raceData || []).forEach(r => { races[r.id] = r; });
+    setSyncStatus('ok', `${clubs.length} clubs`);
+    return true;
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'DB error');
+    toast('Database error: ' + (e.message || e));
+    return false;
+  }
+}
+
+// ── MAP MARKERS ──────────────────────────────────────────────────
+function makeIcon(type, selected) {
+  const s = selected ? 22 : 16;
+  const sw = selected ? 2 : 1.2;
+  let shape;
+  if (type === 'Sail + Power') {
+    const p = selected ? '11,2 20,20 2,20' : '8,1 15,15 1,15';
+    shape = `<polygon points="${p}" fill="${selected?'#34d36a':'#1a7a4a'}" stroke="${selected?'#fff':'rgba(255,255,255,0.7)'}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+  } else if (type === 'Sail') {
+    const r = selected ? 9 : 6.5, c = s/2;
+    shape = `<circle cx="${c}" cy="${c}" r="${r}" fill="${selected?'#4ab8ff':'#1a6fa8'}" stroke="${selected?'#fff':'rgba(255,255,255,0.7)'}" stroke-width="${sw}"/>`;
+  } else if (type === 'Power') {
+    const pad = selected ? 2 : 1.5;
+    shape = `<rect x="${pad}" y="${pad}" width="${s-pad*2}" height="${s-pad*2}" rx="2" fill="${selected?'#f5cc3a':'#d4a017'}" stroke="${selected?'#fff':'rgba(255,255,255,0.7)'}" stroke-width="${sw}"/>`;
+  } else {
+    const h = s/2;
+    shape = `<polygon points="${h},1 ${s-1},${h} ${h},${s-1} 1,${h}" fill="${selected?'#f56e5a':'#c0392b'}" stroke="${selected?'#fff':'rgba(255,255,255,0.7)'}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+  }
+  return L.divIcon({
+    className:'',
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${shape}</svg>`,
+    iconSize:[s,s], iconAnchor:[s/2,s/2], popupAnchor:[0,-s/2]
+  });
+}
+
+function initMap() {
+  leafletMap = L.map('map', {zoomControl:true}).setView([43,-122],6);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19
+  }).addTo(leafletMap);
+}
+
+function renderMarkers() {
+  Object.values(mapMarkers).forEach(m => leafletMap.removeLayer(m));
+  mapMarkers = {};
+  clubs.forEach(club => {
+    if (!club.lat || !club.lng) return;
+    if (activeFilter !== 'all' && club.type !== activeFilter) return;
+    const sel = club.id === selectedClubId;
+    const marker = L.marker([club.lat, club.lng], {icon:makeIcon(club.type, sel), zIndexOffset:sel?1000:0}).addTo(leafletMap);
+    marker.on('click', () => openClub(club.id));
+    mapMarkers[club.id] = marker;
+  });
+}
+
+function refreshMarkerIcon(id) {
+  const m = mapMarkers[id]; if (!m) return;
+  const club = clubs.find(c => c.id === id); if (!club) return;
+  m.setIcon(makeIcon(club.type, id === selectedClubId));
+  m.setZIndexOffset(id === selectedClubId ? 1000 : 0);
+}
+
+// ── RACE OVERLAYS ────────────────────────────────────────────────
+function clearRaceOverlay(raceId) {
+  if (!raceOverlays[raceId]) return;
+  raceOverlays[raceId].lines.forEach(l => leafletMap.removeLayer(l));
+  raceOverlays[raceId].markers.forEach(m => leafletMap.removeLayer(m));
+  delete raceOverlays[raceId];
+}
+
+function drawRaceCourse(race) {
+  // Support both snake_case (DB) and camelCase
+  const nodes = (race.nodes || []).filter(n => n.lat && n.lng && !isNaN(parseFloat(n.lat)) && !isNaN(parseFloat(n.lng)));
+  if (nodes.length < 2) { toast('Add at least 2 nodes with coordinates to draw the course'); return; }
+  clearRaceOverlay(race.id);
+  const layers = {lines:[], markers:[]};
+  const color = '#4a9eff';
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = [parseFloat(nodes[i].lat), parseFloat(nodes[i].lng)];
+    const b = [parseFloat(nodes[i+1].lat), parseFloat(nodes[i+1].lng)];
+    layers.lines.push(L.polyline([a,b], {color, weight:2.5, opacity:0.85}).addTo(leafletMap));
+    const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2];
+    const dLat = b[0]-a[0], dLng = (b[1]-a[1])*Math.cos(a[0]*Math.PI/180);
+    const angle = Math.atan2(dLng, dLat)*180/Math.PI;
+    const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" style="transform:rotate(${angle}deg)"><polygon points="8,0 14,14 8,10 2,14" fill="${color}" opacity="0.9"/></svg>`;
+    layers.markers.push(L.marker(mid, {icon:L.divIcon({className:'',html:arrowSvg,iconSize:[16,16],iconAnchor:[8,8]}), interactive:false}).addTo(leafletMap));
+  }
+  nodes.forEach((n,i) => {
+    const isS = i===0, isF = i===nodes.length-1;
+    const col = isS?'#00e676':isF?'#ff5252':'#ffd740';
+    const lbl = isS?'S':isF?'F':String(i+1);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="${col}" stroke="#fff" stroke-width="1.5"/><text x="11" y="15" text-anchor="middle" font-size="10" font-weight="700" font-family="Inter,sans-serif" fill="#000">${lbl}</text></svg>`;
+    const bm = L.marker([parseFloat(n.lat),parseFloat(n.lng)], {icon:L.divIcon({className:'',html:svg,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(leafletMap);
+    bm.bindTooltip(`${i+1}. ${n.name||'Node'}`, {direction:'top',offset:[0,-12]});
+    layers.markers.push(bm);
+  });
+  raceOverlays[race.id] = layers;
+  leafletMap.fitBounds(L.latLngBounds(nodes.map(n=>[parseFloat(n.lat),parseFloat(n.lng)])).pad(0.3));
+}
+
+function toggleRaceOverlay(raceId) {
+  if (activeRaceId === raceId) {
+    clearRaceOverlay(raceId); activeRaceId = null;
+    document.querySelectorAll('.race-map-btn').forEach(b => b.classList.remove('active'));
+  } else {
+    if (activeRaceId) clearRaceOverlay(activeRaceId);
+    drawRaceCourse(races[raceId]);
+    activeRaceId = raceId;
+    document.querySelectorAll('.race-map-btn').forEach(b => b.classList.toggle('active', b.dataset.raceid===raceId));
+  }
+}
+
+// ── CLUB DETAIL ──────────────────────────────────────────────────
+function typeBadgeClass(t) {
+  return {['Sail + Power']:'both',Sail:'sail',Power:'power',['Sail Racing']:'racing'}[t]||'both';
+}
+
+function openClub(id) {
+  if (selectedClubId && selectedClubId !== id) refreshMarkerIcon(selectedClubId);
+  selectedClubId = id;
+  refreshMarkerIcon(id);
+  const club = clubs.find(c => c.id === id); if (!club) return;
+  leafletMap.setView([club.lat, club.lng], Math.max(leafletMap.getZoom(),12), {animate:true});
+  renderClubDetail(club);
+  document.getElementById('panel-placeholder').style.display = 'none';
+  document.getElementById('club-detail').style.display = 'block';
+}
+
+function renderClubDetail(club) {
+  const clubRaces = Object.values(races).filter(r => (r.club_id||r.clubId) === club.id);
+  const websiteLink = club.website
+    ? `<a href="https://${club.website.replace(/^https?:\/\//,'')}" target="_blank">${club.website} ↗</a>`
+    : '<span style="color:var(--muted)">—</span>';
+  document.getElementById('club-detail').innerHTML = `
+    <div class="club-header">
+      <div class="club-abbrev">${esc(club.abbrev||'')}</div>
+      <div class="club-name-display">${esc(club.name)}</div>
+      <span class="type-badge ${typeBadgeClass(club.type)}">● ${esc(club.type||'')}</span>
+    </div>
+    <div class="info-grid">
+      <div class="info-row"><span class="info-label">State</span><span class="info-value">${esc(club.state||'')}</span></div>
+      <div class="info-row"><span class="info-label">City</span><span class="info-value">${esc(club.city||'—')}</span></div>
+      <div class="info-row"><span class="info-label">Water</span><span class="info-value">${esc(club.water||'—')}</span></div>
+      <div class="info-row"><span class="info-label">Association</span><span class="info-value">${esc(club.association||'—')}</span></div>
+      <div class="info-row"><span class="info-label">Website</span><span class="info-value">${websiteLink}</span></div>
+      <div class="info-row"><span class="info-label">Address</span><span class="info-value">${esc(club.address||'—')}</span></div>
+      <div class="info-row"><span class="info-label">Coordinates</span><span class="info-value"><span class="coords-line">${(club.lat||0).toFixed(5)}, ${(club.lng||0).toFixed(5)}</span></span></div>
+    </div>
+    <hr class="section-divider">
+    <div class="section-title">Club Information <button onclick="toggleEditForm()">✏ Edit</button></div>
+    <div class="edit-form" id="edit-form">
+      <div class="form-row"><label>Club Name</label><input id="ef-name" value="${esc(club.name)}"></div>
+      <div class="form-row"><label>Abbreviation</label><input id="ef-abbrev" value="${esc(club.abbrev||'')}"></div>
+      <div class="form-row"><label>State</label><select id="ef-state">${['Washington','Oregon','California','Other'].map(s=>`<option value="${s}"${club.state===s?' selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="form-row"><label>City / Area</label><input id="ef-city" value="${esc(club.city||'')}"></div>
+      <div class="form-row"><label>Water Body</label><input id="ef-water" value="${esc(club.water||'')}"></div>
+      <div class="form-row"><label>Type</label><select id="ef-type">${['Sail + Power','Sail','Power','Sail Racing'].map(t=>`<option value="${t}"${club.type===t?' selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="form-row"><label>Association</label><input id="ef-assoc" value="${esc(club.association||'')}"></div>
+      <div class="form-row"><label>Website</label><input id="ef-website" value="${esc(club.website||'')}"></div>
+      <div class="form-row"><label>Address</label><input id="ef-address" value="${esc(club.address||'')}"></div>
+      <div class="form-row"><label>Latitude</label><input id="ef-lat" type="number" step="0.00001" value="${club.lat||''}"></div>
+      <div class="form-row"><label>Longitude</label><input id="ef-lng" type="number" step="0.00001" value="${club.lng||''}"></div>
+      <div class="form-actions">
+        <button class="btn-save" id="ef-save-btn" onclick="saveEdit()">Save Changes</button>
+        <button class="btn-cancel" onclick="toggleEditForm()">Cancel</button>
+      </div>
+    </div>
+    <hr class="section-divider">
+    <div class="section-title">Race Courses <span style="color:var(--muted);font-weight:400;font-size:12px;">(${clubRaces.length})</span> <button onclick="toggleRaceForm()">+ Add Race</button></div>
+    <div class="race-add-form" id="race-add-form">
+      <div class="form-row"><label>Race Name *</label><input id="rf-name" placeholder="e.g. Wednesday Night Beer Can"></div>
+      <div class="form-row"><label>Date(s)</label><input id="rf-dates" placeholder="e.g. Every Wed May–Sep"></div>
+      <div class="form-row"><label>Notes</label><textarea id="rf-notes" rows="2" placeholder="Course description, handicap class, etc."></textarea></div>
+      <div class="form-row">
+        <label>Race Nodes (buoys in order)</label>
+        <div class="nodes-list" id="nodes-list">
+          <div class="node-row"><span>1</span><input type="text" placeholder="Name/label" style="flex:2"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5"></div>
+        </div>
+        <button class="btn-add-node" type="button" onclick="addNodeRow()">+ Add node</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn-save" id="rf-save-btn" type="button" onclick="saveRace()">Save Race</button>
+        <button class="btn-cancel" type="button" onclick="toggleRaceForm()">Cancel</button>
+      </div>
+    </div>
+    <div id="races-list">${clubRaces.map(r=>renderRaceCard(r)).join('') || '<div class="race-empty">No races added yet.</div>'}</div>`;
+}
+
+function renderRaceCard(r) {
+  const nodes = r.nodes || [];
+  const nc = nodes.filter(n=>n.lat&&n.lng).length;
+  const nodesHtml = nodes.length
+    ? `<div class="race-nodes">${nodes.map((n,i)=>`<div class="race-node-item"><div class="node-num">${i+1}</div><span style="flex:1;color:var(--chart)">${esc(n.name||'Unnamed')}</span>${n.lat&&n.lng?`<span class="node-coords">${parseFloat(n.lat).toFixed(4)}, ${parseFloat(n.lng).toFixed(4)}</span>`:''}</div>`).join('')}</div>` : '';
+  return `<div class="race-card" id="rcard-${r.id}">
+    <div class="race-card-header">
+      <div>
+        <div class="race-name">${esc(r.name)}</div>
+        <div class="race-meta">${r.dates?esc(r.dates):'No dates set'} · ${nodes.length} node${nodes.length!==1?'s':''}</div>
+        ${r.notes?`<div class="race-meta" style="margin-top:4px;color:var(--chart2)">${esc(r.notes)}</div>`:''}
+      </div>
+      <div class="race-card-actions">
+        <button class="race-btn-edit" onclick="openEditRace('${r.id}')" title="Edit">✏</button>
+        <button class="race-btn-del" onclick="deleteRace('${r.id}')" title="Delete">🗑</button>
+      </div>
+    </div>
+    ${nodesHtml}
+    ${nc>=2?`<button class="race-map-btn" data-raceid="${r.id}" onclick="toggleRaceOverlay('${r.id}')">🗺 Show on map</button>`:''}
+  </div>`;
+}
+
+// ── EDIT CLUB ────────────────────────────────────────────────────
+function toggleEditForm() { document.getElementById('edit-form').classList.toggle('open'); }
+
+async function saveEdit() {
+  const club = clubs.find(c => c.id === selectedClubId); if (!club) return;
+  const btn = document.getElementById('ef-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const updates = {
+    name:        document.getElementById('ef-name').value.trim(),
+    abbrev:      document.getElementById('ef-abbrev').value.trim(),
+    state:       document.getElementById('ef-state').value,
+    city:        document.getElementById('ef-city').value.trim(),
+    water:       document.getElementById('ef-water').value.trim(),
+    type:        document.getElementById('ef-type').value,
+    association: document.getElementById('ef-assoc').value.trim(),
+    website:     document.getElementById('ef-website').value.trim(),
+    address:     document.getElementById('ef-address').value.trim(),
+    lat:         parseFloat(document.getElementById('ef-lat').value),
+    lng:         parseFloat(document.getElementById('ef-lng').value),
+  };
+  const { error } = await sb.from('clubs').update(updates).eq('id', club.id);
+  if (error) { toast('Save failed: ' + error.message); btn.disabled=false; btn.textContent='Save Changes'; return; }
+  Object.assign(club, updates);
+  renderMarkers();
+  renderClubDetail(club);
+  toast('Club info saved ✓');
+}
+
+// ── RACE MANAGEMENT ──────────────────────────────────────────────
+function toggleRaceForm() {
+  const f = document.getElementById('race-add-form');
+  const open = f.classList.toggle('open');
+  if (open) {
+    document.getElementById('rf-name').value = '';
+    document.getElementById('rf-dates').value = '';
+    document.getElementById('rf-notes').value = '';
+    document.getElementById('nodes-list').innerHTML = '<div class="node-row"><span>1</span><input type="text" placeholder="Name/label" style="flex:2"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5"></div>';
+    document.getElementById('rf-save-btn').onclick = saveRace;
+    document.getElementById('rf-name').focus();
+  }
+}
+
+function addNodeRow() {
+  const list = document.getElementById('nodes-list');
+  const num = list.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'node-row';
+  row.innerHTML = `<span>${num}</span><input type="text" placeholder="Name/label" style="flex:2"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5">`;
+  list.appendChild(row);
+}
+
+function collectNodes() {
+  return Array.from(document.querySelectorAll('#nodes-list .node-row')).map(row => {
+    const ins = row.querySelectorAll('input');
+    return {name:ins[0].value.trim(), lat:ins[1].value.trim(), lng:ins[2].value.trim()};
+  }).filter(n => n.name || n.lat || n.lng);
+}
+
+function genId() { return 'id_' + Date.now() + '_' + Math.floor(Math.random()*1e6); }
+
+async function saveRace() {
+  const name = document.getElementById('rf-name').value.trim();
+  if (!name) { toast('Race name is required'); return; }
+  const btn = document.getElementById('rf-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const race = {
+    id: genId(),
+    club_id: selectedClubId,
+    name,
+    dates: document.getElementById('rf-dates').value.trim(),
+    notes: document.getElementById('rf-notes').value.trim(),
+    nodes: collectNodes()
+  };
+  const { error } = await sb.from('races').insert(race);
+  if (error) { toast('Save failed: ' + error.message); btn.disabled=false; btn.textContent='Save Race'; return; }
+  races[race.id] = race;
+  renderClubDetail(clubs.find(c => c.id === selectedClubId));
+  toast('Race course saved ✓');
+}
+
+async function deleteRace(raceId) {
+  if (!confirm('Delete this race course?')) return;
+  const { error } = await sb.from('races').delete().eq('id', raceId);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  clearRaceOverlay(raceId);
+  if (activeRaceId === raceId) activeRaceId = null;
+  delete races[raceId];
+  renderClubDetail(clubs.find(c => c.id === selectedClubId));
+  toast('Race deleted');
+}
+
+async function openEditRace(raceId) {
+  const r = races[raceId]; if (!r) return;
+  const f = document.getElementById('race-add-form');
+  f.classList.add('open');
+  document.getElementById('rf-name').value = r.name;
+  document.getElementById('rf-dates').value = r.dates || '';
+  document.getElementById('rf-notes').value = r.notes || '';
+  const list = document.getElementById('nodes-list');
+  list.innerHTML = '';
+  const ns = r.nodes && r.nodes.length ? r.nodes : [{name:'',lat:'',lng:''}];
+  ns.forEach((n,i) => {
+    const row = document.createElement('div');
+    row.className = 'node-row';
+    row.innerHTML = `<span>${i+1}</span><input type="text" placeholder="Name/label" style="flex:2" value="${esc(n.name||'')}"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5" value="${n.lat||''}"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5" value="${n.lng||''}">`;
+    list.appendChild(row);
+  });
+  document.getElementById('rf-save-btn').onclick = async () => {
+    const btn = document.getElementById('rf-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const updates = {
+      name:  document.getElementById('rf-name').value.trim(),
+      dates: document.getElementById('rf-dates').value.trim(),
+      notes: document.getElementById('rf-notes').value.trim(),
+      nodes: collectNodes()
+    };
+    const { error } = await sb.from('races').update(updates).eq('id', raceId);
+    if (error) { toast('Save failed: ' + error.message); btn.disabled=false; btn.textContent='Save Race'; return; }
+    Object.assign(races[raceId], updates);
+    if (activeRaceId === raceId) { clearRaceOverlay(raceId); drawRaceCourse(races[raceId]); }
+    renderClubDetail(clubs.find(c => c.id === selectedClubId));
+    toast('Race updated ✓');
+  };
+}
+
+// ── ADD CLUB MODAL ───────────────────────────────────────────────
+document.getElementById('btn-add-club').addEventListener('click', () => {
+  document.getElementById('modal-add').classList.add('open');
+});
+document.getElementById('btn-ac-cancel').addEventListener('click', () => {
+  document.getElementById('modal-add').classList.remove('open');
+});
+document.getElementById('modal-add').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-add'))
+    document.getElementById('modal-add').classList.remove('open');
+});
+document.getElementById('btn-ac-save').addEventListener('click', async () => {
+  const name  = (document.getElementById('ac-name').value || '').trim();
+  const state = document.getElementById('ac-state').value;
+  const lat   = parseFloat(document.getElementById('ac-lat').value);
+  const lng   = parseFloat(document.getElementById('ac-lng').value);
+  if (!name || !state) { toast('Name and State are required'); return; }
+  if (isNaN(lat) || isNaN(lng)) { toast('Valid coordinates are required'); return; }
+  const btn = document.getElementById('btn-ac-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const newClub = {
+    id: genId(), name, state, lat, lng,
+    abbrev:      (document.getElementById('ac-abbrev').value||'').trim(),
+    city:        (document.getElementById('ac-city').value||'').trim(),
+    water:       (document.getElementById('ac-water').value||'').trim(),
+    type:        document.getElementById('ac-type').value,
+    association: (document.getElementById('ac-assoc').value||'').trim(),
+    website:     (document.getElementById('ac-website').value||'').trim(),
+    address:     (document.getElementById('ac-address').value||'').trim(),
+  };
+  const { error } = await sb.from('clubs').insert(newClub);
+  btn.disabled = false; btn.textContent = 'Add Club';
+  if (error) { toast('Save failed: ' + error.message); return; }
+  clubs.push(newClub);
+  setSyncStatus('ok', `${clubs.length} clubs`);
+  renderMarkers();
+  document.getElementById('modal-add').classList.remove('open');
+  ['ac-name','ac-abbrev','ac-city','ac-water','ac-assoc','ac-website','ac-address','ac-lat','ac-lng'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('ac-state').value = '';
+  toast('Club added ✓');
+  openClub(newClub.id);
+});
+
+// ── FILTERS ──────────────────────────────────────────────────────
+document.querySelectorAll('.filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.type;
+    renderMarkers();
+    if (selectedClubId) setTimeout(() => refreshMarkerIcon(selectedClubId), 40);
+  });
+});
+
+// ── UTILS ────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────
+(async () => {
+  try {
+    initMap();
+    const ok = await loadAll();
+    if (ok) renderMarkers();
+  } catch(e) {
+    console.error('Boot error:', e);
+    setSyncStatus('err', 'Load failed');
+    document.getElementById('loading-screen').innerHTML =
+      '<div style="color:#ff5252;font-family:monospace;font-size:13px;padding:40px;text-align:center;line-height:2">&#10060; Failed to load: ' + e.message + '<br><button onclick="location.reload()" style="margin-top:12px;padding:8px 20px;background:#4a9eff;color:#0a1628;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Reload</button></div>';
+    return;
+  }
+  // Hide loading screen
+  const ls = document.getElementById('loading-screen');
+  ls.classList.add('hidden');
+  setTimeout(() => ls.style.display='none', 500);
+})();
+</script>
+</body>
+</html>
