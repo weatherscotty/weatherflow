@@ -198,9 +198,16 @@ body{font-family:'Inter',sans-serif;background:var(--navy);color:var(--white);he
     </div>
     <div class="form-row"><label>Association(s)</label><input id="ac-assoc" type="text"></div>
     <div class="form-row"><label>Website</label><input id="ac-website" type="text"></div>
-    <div class="form-row"><label>Address</label><input id="ac-address" type="text"></div>
-    <div class="form-row"><label>Latitude *</label><input id="ac-lat" type="number" step="0.0001" placeholder="e.g. 47.6452"></div>
-    <div class="form-row"><label>Longitude *</label><input id="ac-lng" type="number" step="0.0001" placeholder="e.g. -122.3086"></div>
+    <div class="form-row">
+      <label>Address</label>
+      <div style="display:flex;gap:6px">
+        <input id="ac-address" type="text" placeholder="e.g. 1807 E Hamlin St, Seattle, WA" style="flex:1">
+        <button type="button" id="btn-geocode" onclick="geocodeAddress()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--accent);padding:0 10px;cursor:pointer;font-size:12px;white-space:nowrap;font-family:'Inter',sans-serif">📍 Lookup</button>
+      </div>
+      <div id="geocode-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:16px"></div>
+    </div>
+    <div class="form-row"><label>Latitude *</label><input id="ac-lat" type="number" step="0.0001" placeholder="Auto-filled from address lookup"></div>
+    <div class="form-row"><label>Longitude *</label><input id="ac-lng" type="number" step="0.0001" placeholder="Auto-filled from address lookup"></div>
     <div class="modal-actions">
       <button class="btn-save" id="btn-ac-save">Add Club</button>
       <button class="btn-cancel" id="btn-ac-cancel">Cancel</button>
@@ -407,32 +414,74 @@ function clearRaceOverlay(raceId) {
   delete raceOverlays[raceId];
 }
 
+function drawArrow(layers, a, b, color) {
+  const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2];
+  const dLat = b[0]-a[0], dLng = (b[1]-a[1])*Math.cos(a[0]*Math.PI/180);
+  const angle = Math.atan2(dLng, dLat)*180/Math.PI;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" style="transform:rotate(${angle}deg)"><polygon points="8,0 14,14 8,10 2,14" fill="${color}" opacity="0.9"/></svg>`;
+  layers.markers.push(L.marker(mid, {icon:L.divIcon({className:'',html:svg,iconSize:[16,16],iconAnchor:[8,8]}), interactive:false}).addTo(leafletMap));
+}
+
+function drawBuoy(layers, lat, lng, label, col, tooltip) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="${col}" stroke="#fff" stroke-width="1.5"/><text x="11" y="15" text-anchor="middle" font-size="10" font-weight="700" font-family="Inter,sans-serif" fill="#000">${label}</text></svg>`;
+  const m = L.marker([lat, lng], {icon:L.divIcon({className:'',html:svg,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(leafletMap);
+  if (tooltip) m.bindTooltip(tooltip, {direction:'top',offset:[0,-12]});
+  layers.markers.push(m);
+}
+
+function drawStartLine(layers, n0, n1, reverse) {
+  // Draw a dashed line between the two start/finish buoys
+  const a = [parseFloat(n0.lat), parseFloat(n0.lng)];
+  const b = [parseFloat(n1.lat), parseFloat(n1.lng)];
+  const lineColor = reverse ? '#ff5252' : '#00e676';
+  const dashLine = L.polyline([a, b], {color:lineColor, weight:3, opacity:0.9, dashArray:'6 5'}).addTo(leafletMap);
+  layers.lines.push(dashLine);
+  // Arrow showing crossing direction
+  drawArrow(layers, reverse ? b : a, reverse ? a : b, lineColor);
+}
+
 function drawRaceCourse(race) {
-  // Support both snake_case (DB) and camelCase
   const nodes = (race.nodes || []).filter(n => n.lat && n.lng && !isNaN(parseFloat(n.lat)) && !isNaN(parseFloat(n.lng)));
   if (nodes.length < 2) { toast('Add at least 2 nodes with coordinates to draw the course'); return; }
   clearRaceOverlay(race.id);
   const layers = {lines:[], markers:[]};
   const color = '#4a9eff';
+  const sameFinish = !!(race.same_finish);
+
+  // Draw course segment lines with arrows
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = [parseFloat(nodes[i].lat), parseFloat(nodes[i].lng)];
     const b = [parseFloat(nodes[i+1].lat), parseFloat(nodes[i+1].lng)];
     layers.lines.push(L.polyline([a,b], {color, weight:2.5, opacity:0.85}).addTo(leafletMap));
-    const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2];
-    const dLat = b[0]-a[0], dLng = (b[1]-a[1])*Math.cos(a[0]*Math.PI/180);
-    const angle = Math.atan2(dLng, dLat)*180/Math.PI;
-    const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" style="transform:rotate(${angle}deg)"><polygon points="8,0 14,14 8,10 2,14" fill="${color}" opacity="0.9"/></svg>`;
-    layers.markers.push(L.marker(mid, {icon:L.divIcon({className:'',html:arrowSvg,iconSize:[16,16],iconAnchor:[8,8]}), interactive:false}).addTo(leafletMap));
+    drawArrow(layers, a, b, color);
   }
-  nodes.forEach((n,i) => {
-    const isS = i===0, isF = i===nodes.length-1;
-    const col = isS?'#00e676':isF?'#ff5252':'#ffd740';
-    const lbl = isS?'S':isF?'F':String(i+1);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="${col}" stroke="#fff" stroke-width="1.5"/><text x="11" y="15" text-anchor="middle" font-size="10" font-weight="700" font-family="Inter,sans-serif" fill="#000">${lbl}</text></svg>`;
-    const bm = L.marker([parseFloat(n.lat),parseFloat(n.lng)], {icon:L.divIcon({className:'',html:svg,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(leafletMap);
-    bm.bindTooltip(`${i+1}. ${n.name||'Node'}`, {direction:'top',offset:[0,-12]});
-    layers.markers.push(bm);
+
+  // If same finish, draw finish line between nodes 0 & 1 in reverse direction
+  if (sameFinish && nodes.length >= 2) {
+    drawStartLine(layers, nodes[0], nodes[1], true); // reverse = finish direction
+  }
+
+  // Draw the start line between nodes 0 and 1 (forward direction)
+  if (nodes.length >= 2) {
+    drawStartLine(layers, nodes[0], nodes[1], false);
+  }
+
+  // Draw buoy markers
+  nodes.forEach((n, i) => {
+    const lat = parseFloat(n.lat), lng = parseFloat(n.lng);
+    // Node 0 and 1 form the start line ends (RC boat & pin)
+    if (i === 0) {
+      drawBuoy(layers, lat, lng, 'RC', '#00e676', '1. ' + (n.name||'RC Boat (start line)'));
+    } else if (i === 1 && nodes.length >= 2) {
+      drawBuoy(layers, lat, lng, 'PIN', '#00e676', '2. ' + (n.name||'Pin (start line)'));
+    } else {
+      const isLast = i === nodes.length - 1;
+      const col = isLast && !sameFinish ? '#ff5252' : '#ffd740';
+      const lbl = isLast && !sameFinish ? 'F' : String(i+1);
+      drawBuoy(layers, lat, lng, lbl, col, `${i+1}. ${n.name||'Mark'}`);
+    }
   });
+
   raceOverlays[race.id] = layers;
   leafletMap.fitBounds(L.latLngBounds(nodes.map(n=>[parseFloat(n.lat),parseFloat(n.lng)])).pad(0.3));
 }
@@ -517,6 +566,13 @@ function renderClubDetail(club) {
         </div>
         <button class="btn-add-node" type="button" onclick="addNodeRow()">+ Add node</button>
       </div>
+      <div class="form-row" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;color:var(--chart)">
+          <input type="checkbox" id="rf-same-finish" style="width:14px;height:14px;accent-color:var(--accent)">
+          Finish line is same as start line (boats cross start line in reverse to finish)
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;padding-left:22px">When checked, nodes 1 &amp; 2 define the start line. The finish line is drawn between those same two points in the opposite direction.</div>
+      </div>
       <div class="form-actions">
         <button class="btn-save" id="rf-save-btn" type="button" onclick="saveRace()">Save Race</button>
         <button class="btn-cancel" type="button" onclick="toggleRaceForm()">Cancel</button>
@@ -534,7 +590,7 @@ function renderRaceCard(r) {
     <div class="race-card-header">
       <div>
         <div class="race-name">${esc(r.name)}</div>
-        <div class="race-meta">${r.dates?esc(r.dates):'No dates set'} · ${nodes.length} node${nodes.length!==1?'s':''}</div>
+        <div class="race-meta">${r.dates?esc(r.dates):'No dates set'} · ${nodes.length} node${nodes.length!==1?'s':''}${r.same_finish?' · <span style="color:#00e676">⟳ Same start/finish</span>':''}</div>
         ${r.notes?`<div class="race-meta" style="margin-top:4px;color:var(--chart2)">${esc(r.notes)}</div>`:''}
       </div>
       <div class="race-card-actions">
@@ -584,6 +640,7 @@ function toggleRaceForm() {
     document.getElementById('rf-dates').value = '';
     document.getElementById('rf-notes').value = '';
     document.getElementById('nodes-list').innerHTML = '<div class="node-row"><span>1</span><input type="text" placeholder="Name/label" style="flex:2"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5"></div>';
+    const sfcb = document.getElementById('rf-same-finish'); if (sfcb) sfcb.checked = false;
     document.getElementById('rf-save-btn').onclick = saveRace;
     document.getElementById('rf-name').focus();
   }
@@ -604,6 +661,10 @@ function collectNodes() {
     return {name:ins[0].value.trim(), lat:ins[1].value.trim(), lng:ins[2].value.trim()};
   }).filter(n => n.name || n.lat || n.lng);
 }
+function getSameFinish() {
+  const cb = document.getElementById('rf-same-finish');
+  return cb ? cb.checked : false;
+}
 
 function genId() { return 'id_' + Date.now() + '_' + Math.floor(Math.random()*1e6); }
 
@@ -618,7 +679,8 @@ async function saveRace() {
     name,
     dates: document.getElementById('rf-dates').value.trim(),
     notes: document.getElementById('rf-notes').value.trim(),
-    nodes: collectNodes()
+    nodes: collectNodes(),
+    same_finish: getSameFinish()
   };
   const { error } = await sb.from('races').insert(race);
   if (error) { toast('Save failed: ' + error.message); btn.disabled=false; btn.textContent='Save Race'; return; }
@@ -654,6 +716,8 @@ async function openEditRace(raceId) {
     row.innerHTML = `<span>${i+1}</span><input type="text" placeholder="Name/label" style="flex:2" value="${esc(n.name||'')}"><input type="number" step="0.00001" placeholder="Lat" style="flex:1.5" value="${n.lat||''}"><input type="number" step="0.00001" placeholder="Lng" style="flex:1.5" value="${n.lng||''}">`;
     list.appendChild(row);
   });
+  const sfcb = document.getElementById('rf-same-finish');
+  if (sfcb) sfcb.checked = !!(r.same_finish);
   document.getElementById('rf-save-btn').onclick = async () => {
     const btn = document.getElementById('rf-save-btn');
     btn.disabled = true; btn.textContent = 'Saving…';
@@ -661,7 +725,8 @@ async function openEditRace(raceId) {
       name:  document.getElementById('rf-name').value.trim(),
       dates: document.getElementById('rf-dates').value.trim(),
       notes: document.getElementById('rf-notes').value.trim(),
-      nodes: collectNodes()
+      nodes: collectNodes(),
+      same_finish: getSameFinish()
     };
     const { error } = await sb.from('races').update(updates).eq('id', raceId);
     if (error) { toast('Save failed: ' + error.message); btn.disabled=false; btn.textContent='Save Race'; return; }
@@ -670,6 +735,35 @@ async function openEditRace(raceId) {
     renderClubDetail(clubs.find(c => c.id === selectedClubId));
     toast('Race updated ✓');
   };
+}
+
+
+// ── GEOCODE ADDRESS ──────────────────────────────────────────────
+async function geocodeAddress() {
+  const addr = (document.getElementById('ac-address').value || '').trim();
+  const status = document.getElementById('geocode-status');
+  if (!addr) { status.textContent = 'Enter an address first'; status.style.color = '#ff5252'; return; }
+  const btn = document.getElementById('btn-geocode');
+  btn.textContent = '⏳'; btn.disabled = true;
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Looking up…';
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(addr);
+    const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'SailFlow/1.0' } });
+    const data = await res.json();
+    if (!data || data.length === 0) {
+      status.textContent = 'Address not found — try adding city/state'; status.style.color = '#ff5252';
+    } else {
+      const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      document.getElementById('ac-lat').value = lat.toFixed(6);
+      document.getElementById('ac-lng').value = lng.toFixed(6);
+      status.textContent = '✓ Found: ' + data[0].display_name.slice(0, 60) + '…';
+      status.style.color = '#00e676';
+    }
+  } catch(e) {
+    status.textContent = 'Lookup failed: ' + e.message; status.style.color = '#ff5252';
+  }
+  btn.textContent = '📍 Lookup'; btn.disabled = false;
 }
 
 // ── ADD CLUB MODAL ───────────────────────────────────────────────
@@ -704,17 +798,19 @@ document.getElementById('btn-ac-save').addEventListener('click', async () => {
   };
   const { error } = await sb.from('clubs').insert(newClub);
   btn.disabled = false; btn.textContent = 'Add Club';
-  if (error) { toast('Save failed: ' + error.message); return; }
+  if (error) { toast('Save failed: ' + error.message); console.error('Insert error:', error); return; }
   clubs.push(newClub);
   setSyncStatus('ok', `${clubs.length} clubs`);
   renderMarkers();
   document.getElementById('modal-add').classList.remove('open');
-  ['ac-name','ac-abbrev','ac-city','ac-water','ac-assoc','ac-website','ac-address','ac-lat','ac-lng'].forEach(id => {
-    document.getElementById(id).value = '';
+  ['ac-name','ac-abbrev','ac-city','ac-water','ac-assoc','ac-website','ac-address','ac-lat','ac-lng'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
-  document.getElementById('ac-state').value = '';
+  const stateEl = document.getElementById('ac-state');
+  if (stateEl) stateEl.value = '';
   toast('Club added ✓');
-  openClub(newClub.id);
+  try { openClub(newClub.id); } catch(e) { console.error('openClub error:', e); }
 });
 
 // ── FILTERS ──────────────────────────────────────────────────────
