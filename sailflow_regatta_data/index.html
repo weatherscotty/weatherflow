@@ -125,6 +125,18 @@ body{font-family:'Inter',sans-serif;background:var(--navy);color:var(--white);he
 .race-map-btn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:11px;font-weight:600;color:var(--accent);background:none;border:1px solid var(--border);border-radius:5px;padding:4px 10px;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s}
 .race-map-btn:hover{background:rgba(74,158,255,.12)}
 .race-map-btn.active{background:rgba(74,158,255,.2);border-color:var(--accent)}
+
+.zone-edit-bar{background:rgba(74,158,255,0.12);border:1px solid var(--accent);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.zone-edit-bar span{font-size:12px;color:var(--accent);font-weight:600}
+.zone-edit-bar .zone-btns{display:flex;gap:6px}
+.zone-node-handle{width:12px;height:12px;background:#fff;border:2px solid var(--accent);border-radius:50%;cursor:grab;box-shadow:0 0 4px rgba(0,0,0,0.5)}
+.zone-node-handle:active{cursor:grabbing}
+.zone-section{margin-top:4px}
+.zone-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .15s}
+.zone-card:hover{border-color:var(--accent)}
+.zone-card.active{border-color:var(--accent);background:rgba(74,158,255,.08)}
+.zone-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block;margin-right:6px}
+
 </style>
 </head>
 <body>
@@ -153,6 +165,7 @@ body{font-family:'Inter',sans-serif;background:var(--navy);color:var(--white);he
     <div class="legend-item"><svg class="legend-svg" viewBox="0 0 14 14"><polygon points="7,1 13,7 7,13 1,7" fill="#c0392b" stroke="#fff" stroke-width="1"/></svg>Racing</div>
   </div>
   <div class="topbar-spacer"></div>
+  <button id="btn-satellite" onclick="toggleSatellite()" style="background:none;border:1px solid var(--border);border-radius:var(--radius);padding:5px 12px;font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;white-space:nowrap">🛰 Satellite</button>
   <div id="sync-status"><div id="sync-dot"></div><span id="sync-label">Connecting…</span></div>
   <div class="topbar-divider"></div>
   <button id="btn-add-club">+ Add Club</button>
@@ -297,6 +310,118 @@ const SEED = [
   {id:"club_62",state:"California",name:"Coronado Yacht Club",abbrev:"CorYC",city:"Coronado",water:"San Diego Bay",association:"SCYA / SDAYC",type:"Sail + Power",website:"",lat:32.6818672,lng:-117.1745196,address:"1631 Strand Way, Coronado, CA 92118"}
 ];
 
+
+// ── RACE ZONE DATA ────────────────────────────────────────────────
+// Each zone: id, club_ids[], name, nodes[[lat,lng]], color, description
+// Zones are stored in Supabase; these are defaults seeded on first load.
+const SEED_ZONES = [
+  {
+    id: 'zone_columbia_portland',
+    name: 'Columbia River – Portland',
+    club_ids: ['club_20','club_21','club_22','club_23','club_29'],
+    description: 'Primary racing stretch of the Columbia River between Portland clubs, Hayden Island to Troutdale area.',
+    color: '#4a9eff',
+    nodes: [
+      [45.6185, -122.7380], // NW corner near St Johns
+      [45.6225, -122.7100], // N bank west
+      [45.6240, -122.6700], // N bank mid (Hayden Island E)
+      [45.6220, -122.6350], // N bank east
+      [45.6180, -122.6050], // NE bend
+      [45.6050, -122.5800], // E end N bank
+      [45.5950, -122.5820], // E end S bank
+      [45.5980, -122.6080], // SE
+      [45.6010, -122.6350], // S bank east
+      [45.5990, -122.6700], // S bank mid
+      [45.5970, -122.7100], // S bank west
+      [45.5990, -122.7380], // SW corner
+    ]
+  },
+  {
+    id: 'zone_multnomah_channel',
+    name: 'Multnomah Channel',
+    club_ids: ['club_24'],
+    description: 'Multnomah Channel – narrow backwater channel west of Sauvie Island, used by MCYC for racing.',
+    color: '#a78bfa',
+    nodes: [
+      [45.7600, -122.8650], // N end W bank
+      [45.7620, -122.8520], // N end E bank
+      [45.7400, -122.8460], // mid E bank
+      [45.7200, -122.8400], // S mid E bank
+      [45.7050, -122.8390], // near Scappoose S E
+      [45.7040, -122.8520], // near Scappoose S W
+      [45.7200, -122.8560], // S mid W bank
+      [45.7400, -122.8620], // mid W bank
+    ]
+  },
+  {
+    id: 'zone_willamette_portland',
+    name: 'Willamette River – Portland',
+    club_ids: ['club_25'],
+    description: 'Willamette River stretch used by Willamette Sailing Club, south Portland.',
+    color: '#34d399',
+    nodes: [
+      [45.4950, -122.6850], // N W bank
+      [45.4970, -122.6730], // N E bank
+      [45.4800, -122.6690], // mid E bank
+      [45.4650, -122.6700], // S E bank
+      [45.4630, -122.6800], // S W bank
+      [45.4790, -122.6850], // mid W bank
+    ]
+  },
+  {
+    id: 'zone_columbia_astoria',
+    name: 'Columbia River – Astoria Mouth',
+    club_ids: ['club_27'],
+    description: 'Wide Columbia River estuary at Astoria, extending into Young's Bay area.',
+    color: '#fb923c',
+    nodes: [
+      [46.2150, -123.9200], // NW outer
+      [46.2300, -123.8800], // N mid
+      [46.2200, -123.8200], // NE
+      [46.1950, -123.7800], // E inner
+      [46.1600, -123.7900], // SE inner
+      [46.1400, -123.8300], // S mid
+      [46.1450, -123.8800], // SW mid
+      [46.1600, -123.9200], // SW outer
+    ]
+  },
+  {
+    id: 'zone_fern_ridge',
+    name: 'Fern Ridge Lake',
+    club_ids: ['club_26'],
+    description: 'Entire Fern Ridge Reservoir – 9,000 acres, primary racing area for Eugene Yacht Club. Standard Olympic circle course used.',
+    color: '#f472b6',
+    nodes: [
+      [44.1450, -123.3500], // NW
+      [44.1500, -123.3200], // N mid
+      [44.1480, -123.2900], // NE
+      [44.1350, -123.2700], // E
+      [44.1100, -123.2700], // SE
+      [44.0950, -123.2900], // S
+      [44.0900, -123.3200], // SW
+      [44.1000, -123.3500], // W
+      [44.1200, -123.3600], // NW lower
+    ]
+  },
+  {
+    id: 'zone_yaquina_bay',
+    name: 'Yaquina Bay – Newport',
+    club_ids: ['club_28'],
+    description: 'Yaquina Bay and adjacent coastal waters off Newport, Oregon.',
+    color: '#fbbf24',
+    nodes: [
+      [44.6450, -124.0700], // outer N
+      [44.6550, -124.0500], // N mouth
+      [44.6500, -124.0200], // NE bay
+      [44.6350, -124.0100], // E bay inner
+      [44.6200, -124.0150], // SE bay
+      [44.6100, -124.0400], // S bay
+      [44.6150, -124.0650], // SW
+      [44.6300, -124.0750], // W outer
+    ]
+  }
+];
+
 // ── STATE ────────────────────────────────────────────────────────
 let clubs = [];
 let races = {};
@@ -306,6 +431,15 @@ let mapMarkers = {};
 let raceOverlays = {};
 let activeRaceId = null;
 let leafletMap;
+let satelliteMode = false;
+let baseLayer = null;
+let satLayer = null;
+// Zone state
+let zones = [];           // loaded from Supabase
+let zonePolygons = {};    // zoneId -> L.polygon
+let zoneHandles = {};     // zoneId -> [L.marker, ...]
+let activeZoneId = null;  // currently selected zone
+let editingZoneId = null; // zone in drag-edit mode
 
 // ── SYNC STATUS ──────────────────────────────────────────────────
 function setSyncStatus(state, label) {
@@ -379,11 +513,201 @@ function makeIcon(type, selected) {
   });
 }
 
+
+// ── SATELLITE TOGGLE ─────────────────────────────────────────────
+function toggleSatellite() {
+  satelliteMode = !satelliteMode;
+  const btn = document.getElementById('btn-satellite');
+  if (satelliteMode) {
+    if (baseLayer) leafletMap.removeLayer(baseLayer);
+    if (!satLayer) {
+      satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri — Source: Esri, Maxar, GeoEye, Earthstar Geographics', maxZoom:19
+      });
+    }
+    satLayer.addTo(leafletMap);
+    btn.style.background = 'var(--accent)'; btn.style.color = 'var(--navy)';
+    btn.style.borderColor = 'var(--accent)';
+  } else {
+    if (satLayer) leafletMap.removeLayer(satLayer);
+    if (!baseLayer) {
+      baseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO', maxZoom:19
+      });
+    }
+    baseLayer.addTo(leafletMap);
+    btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+  }
+}
+
+// ── ZONE RENDERING ────────────────────────────────────────────────
+function hexToRgba(hex, alpha) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function renderZones(filterClubId) {
+  Object.values(zonePolygons).forEach(p => leafletMap.removeLayer(p));
+  zonePolygons = {};
+  clearAllHandles();
+  zones.forEach(zone => {
+    if (!zone.nodes || zone.nodes.length < 3) return;
+    if (filterClubId && !(zone.club_ids||[]).includes(filterClubId)) return;
+    const latlngs = zone.nodes.map(n => [n[0], n[1]]);
+    const color = zone.color || '#4a9eff';
+    const isActive = zone.id === activeZoneId;
+    const poly = L.polygon(latlngs, {
+      color, weight: isActive ? 2.5 : 1.5, opacity: isActive ? 0.95 : 0.7,
+      fillColor: color, fillOpacity: isActive ? 0.22 : 0.12
+    }).addTo(leafletMap);
+    poly.on('click', () => selectZone(zone.id));
+    zonePolygons[zone.id] = poly;
+    if (editingZoneId === zone.id) renderZoneHandles(zone);
+  });
+}
+
+function selectZone(zoneId) {
+  activeZoneId = zoneId;
+  renderZones(selectedClubId || null);
+  if (selectedClubId) { const c = clubs.find(c => c.id === selectedClubId); if(c) renderClubDetail(c); }
+}
+
+function clearAllHandles() {
+  Object.values(zoneHandles).forEach(handles => handles.forEach(m => leafletMap.removeLayer(m)));
+  zoneHandles = {};
+}
+
+function renderZoneHandles(zone) {
+  clearAllHandles();
+  const handles = [];
+  zone.nodes.forEach((node, idx) => {
+    const handle = L.marker([node[0], node[1]], {
+      draggable: true,
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:12px;height:12px;background:#fff;border:2px solid #4a9eff;border-radius:50%;cursor:grab;box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>`,
+        iconSize:[12,12], iconAnchor:[6,6]
+      }),
+      zIndexOffset: 2000
+    }).addTo(leafletMap);
+    handle.on('drag', (e) => {
+      const {lat,lng} = e.target.getLatLng();
+      zone.nodes[idx] = [parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6))];
+      if (zonePolygons[zone.id]) zonePolygons[zone.id].setLatLngs(zone.nodes.map(n=>[n[0],n[1]]));
+    });
+    handle.on('dragend', () => saveZone(zone, false));
+    handles.push(handle);
+  });
+  zoneHandles[zone.id] = handles;
+}
+
+function startEditZone(zoneId) {
+  editingZoneId = zoneId;
+  activeZoneId = zoneId;
+  const zone = zones.find(z => z.id === zoneId); if (!zone) return;
+  if (!satelliteMode) toggleSatellite();
+  const bounds = L.latLngBounds(zone.nodes.map(n=>[n[0],n[1]]));
+  leafletMap.fitBounds(bounds.pad(0.2));
+  renderZones(selectedClubId || null);
+  if (selectedClubId) { const c = clubs.find(c=>c.id===selectedClubId); if(c) renderClubDetail(c); }
+}
+
+function stopEditZone() {
+  editingZoneId = null;
+  clearAllHandles();
+  renderZones(selectedClubId || null);
+  if (selectedClubId) { const c = clubs.find(c=>c.id===selectedClubId); if(c) renderClubDetail(c); }
+}
+
+function addZoneNode(zoneId) {
+  const zone = zones.find(z => z.id === zoneId); if (!zone || zone.nodes.length < 2) return;
+  const n = zone.nodes.length;
+  const prev = zone.nodes[n-2], last = zone.nodes[n-1];
+  zone.nodes.splice(n-1, 0, [(prev[0]+last[0])/2, (prev[1]+last[1])/2]);
+  renderZoneHandles(zone);
+  if (zonePolygons[zone.id]) zonePolygons[zone.id].setLatLngs(zone.nodes.map(n=>[n[0],n[1]]));
+  saveZone(zone, false);
+}
+
+function removeLastZoneNode(zoneId) {
+  const zone = zones.find(z => z.id === zoneId);
+  if (!zone || zone.nodes.length <= 4) { toast('Minimum 4 nodes required'); return; }
+  zone.nodes.splice(zone.nodes.length-2, 1);
+  renderZoneHandles(zone);
+  if (zonePolygons[zone.id]) zonePolygons[zone.id].setLatLngs(zone.nodes.map(n=>[n[0],n[1]]));
+  saveZone(zone, false);
+}
+
+// ── ZONE SUPABASE OPS ─────────────────────────────────────────────
+async function loadZones() {
+  try {
+    const { data, error } = await sb.from('race_zones').select('*');
+    if (error || !data || data.length === 0) {
+      zones = SEED_ZONES.map(z => ({...z}));
+      if (!error) {
+        for (const zone of zones) await sb.from('race_zones').upsert(zone);
+      }
+    } else {
+      zones = data;
+    }
+  } catch(e) {
+    console.warn('loadZones failed, using seed data:', e);
+    zones = SEED_ZONES.map(z => ({...z}));
+  }
+}
+
+async function saveZone(zone, showToast) {
+  try {
+    const { error } = await sb.from('race_zones').upsert({
+      id: zone.id, name: zone.name, club_ids: zone.club_ids,
+      description: zone.description, color: zone.color, nodes: zone.nodes
+    });
+    if (error) throw error;
+    if (showToast) toast('Zone saved ✓');
+  } catch(e) {
+    console.error('Zone save failed:', e);
+    if (showToast) toast('Zone save failed: ' + e.message);
+  }
+}
+
+// ── ZONE PANEL HTML ───────────────────────────────────────────────
+function renderZoneSection(club) {
+  const clubZones = zones.filter(z => (z.club_ids||[]).includes(club.id));
+  if (clubZones.length === 0) return `<div style="font-size:12px;color:var(--muted);font-style:italic;padding:4px 0">No race zone assigned to this club yet.</div>`;
+  return clubZones.map(zone => {
+    const isEditing = editingZoneId === zone.id;
+    const isActive  = activeZoneId  === zone.id;
+    return `<div class="zone-card ${isActive?'active':''}" onclick="selectZone('${zone.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${zone.color||'#4a9eff'};flex-shrink:0;display:inline-block"></span>
+          <span style="font-size:13px;font-weight:600;color:var(--white)">${esc(zone.name)}</span>
+        </div>
+        <span style="font-size:11px;color:var(--muted)">${(zone.nodes||[]).length} nodes</span>
+      </div>
+      ${zone.description?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(zone.description)}</div>`:''}
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${isEditing ? `
+          <button onclick="event.stopPropagation();addZoneNode('${zone.id}')" class="section-title" style="font-size:11px;padding:3px 9px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--accent);cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;letter-spacing:0;text-transform:none">+ Node</button>
+          <button onclick="event.stopPropagation();removeLastZoneNode('${zone.id}')" style="font-size:11px;padding:3px 9px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif">− Node</button>
+          <button onclick="event.stopPropagation();saveZone(zones.find(z=>z.id==='${zone.id}'),true)" style="font-size:11px;padding:3px 9px;background:var(--accent);border:none;border-radius:5px;color:var(--navy);font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Save</button>
+          <button onclick="event.stopPropagation();stopEditZone()" style="font-size:11px;padding:3px 9px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif">Done</button>
+        ` : `
+          <button onclick="event.stopPropagation();startEditZone('${zone.id}')" style="font-size:11px;padding:3px 9px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--accent);cursor:pointer;font-family:'Inter',sans-serif">✏ Edit nodes</button>
+          <button onclick="event.stopPropagation();(()=>{selectZone('${zone.id}');const z=zones.find(z=>z.id==='${zone.id}');if(z)leafletMap.fitBounds(L.latLngBounds(z.nodes.map(n=>[n[0],n[1]])).pad(0.2))})()" style="font-size:11px;padding:3px 9px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif">🗺 View</button>
+        `}
+      </div>
+      ${isEditing?'<div style="font-size:11px;color:var(--accent);margin-top:6px;padding:5px 8px;background:rgba(74,158,255,0.08);border-radius:4px">✋ Drag white handles to reshape the zone. Auto-saves on release.</div>':''}
+    </div>`;
+  }).join('');
+}
+
 function initMap() {
   leafletMap = L.map('map', {zoomControl:true}).setView([43,-122],6);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  baseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19
-  }).addTo(leafletMap);
+  });
+  baseLayer.addTo(leafletMap);
 }
 
 function renderMarkers() {
@@ -510,6 +834,8 @@ function openClub(id) {
   const club = clubs.find(c => c.id === id); if (!club) return;
   leafletMap.setView([club.lat, club.lng], Math.max(leafletMap.getZoom(),12), {animate:true});
   renderClubDetail(club);
+  // Highlight zones for this club
+  renderZones(id);
   document.getElementById('panel-placeholder').style.display = 'none';
   document.getElementById('club-detail').style.display = 'block';
 }
@@ -553,6 +879,9 @@ function renderClubDetail(club) {
         <button class="btn-cancel" onclick="toggleEditForm()">Cancel</button>
       </div>
     </div>
+    <hr class="section-divider">
+    <div class="section-title">Race Zone <button onclick="event.stopPropagation();renderZones('${club.id}');leafletMap.fitBounds(L.latLngBounds(zones.filter(z=>(z.club_ids||[]).includes('${club.id}')).flatMap(z=>z.nodes.map(n=>[n[0],n[1]]))).pad(0.2))" style="font-size:11px">🗺 Show zone</button></div>
+    <div class="zone-section">${renderZoneSection(club)}</div>
     <hr class="section-divider">
     <div class="section-title">Race Courses <span style="color:var(--muted);font-weight:400;font-size:12px;">(${clubRaces.length})</span> <button onclick="toggleRaceForm()">+ Add Race</button></div>
     <div class="race-add-form" id="race-add-form">
@@ -840,7 +1169,11 @@ function toast(msg) {
   try {
     initMap();
     const ok = await loadAll();
-    if (ok) renderMarkers();
+    if (ok) {
+      renderMarkers();
+      await loadZones();
+      renderZones(null);
+    }
   } catch(e) {
     console.error('Boot error:', e);
     setSyncStatus('err', 'Load failed');
